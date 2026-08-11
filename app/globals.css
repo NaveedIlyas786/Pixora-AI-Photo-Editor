@@ -1,26 +1,247 @@
+/* Tailwind v4 core */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ===== THEME TOKENS =====
+   Map your old theme.extend.* into v4 tokens via @theme.
+   Any --color-foo token gives you classes like bg-foo, text-foo, border-foo, ring-foo, etc.
+*/
+@theme {
+  /* fonts */
+  --font-inter: "Inter", sans-serif;
+
+  /* radius */
+  --radius: 1rem;
+
+  /* colors (HSL strings are fine) */
+  --color-background: hsl(220 27% 6%);
+  --color-foreground: hsl(210 40% 98%);
+
+  --color-card: hsl(220 27% 8%);
+  --color-card-foreground: hsl(210 40% 98%);
+  --color-card-border: hsl(220 27% 12%);
+
+  --color-popover: hsl(220 27% 8%);
+  --color-popover-foreground: hsl(210 40% 98%);
+
+  --color-primary: hsl(192 100% 50%);
+  --color-primary-foreground: hsl(220 27% 6%);
+
+  --color-primary-glow: hsl(192 100% 70%);
+  --color-secondary-glow: hsl(271 81% 70%);
+
+  --color-secondary: hsl(271 81% 56%);
+  --color-secondary-foreground: hsl(210 40% 98%);
+
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+
+  --color-muted: hsl(220 27% 12%);
+  --color-muted-foreground: hsl(215 20.2% 65.1%);
+
+  --color-accent: hsl(271 81% 56%);
+  --color-accent-foreground: hsl(210 40% 98%);
+
+  --color-border: hsl(220 27% 15%);
+  --color-input: hsl(220 27% 10%);
+  --color-ring: hsl(192 100% 50%);
+
+  /* You can reference these in utilities via var() */
+  --gradient-primary: linear-gradient(
+    135deg,
+    hsl(192 100% 50%),
+    hsl(271 81% 56%)
+  );
+  --gradient-glass: linear-gradient(
+    135deg,
+    hsl(220 27% 8% / 0.4),
+    hsl(220 27% 8% / 0.1)
+  );
+  --gradient-border: linear-gradient(
+    135deg,
+    hsl(192 100% 50% / 0.3),
+    hsl(271 81% 56% / 0.3)
+  );
+
+  --glow-primary: 0 0 40px hsl(192 100% 50% / 0.3);
+  --glow-secondary: 0 0 40px hsl(271 81% 56% / 0.3);
+  --glow-subtle: 0 4px 20px hsl(192 100% 50% / 0.1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+/* ===== BASE ===== */
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark; /* you’re using a dark design system */
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-inter;
+    background: linear-gradient(
+      135deg,
+      var(--color-background),
+      hsl(220 27% 4%)
+    );
+    min-height: 100vh;
+  }
+
+  /* Rounded scale (maps to rounded-lg/md/sm via tokens in v4) */
+  :root {
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-muted);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-primary);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(192 100% 70%);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ===== UTILITIES (ported helpers) ===== */
+@layer utilities {
+  .glass {
+    background: hsl(220 27% 8% / 0.1);
+    backdrop-filter: blur(20px);
+    border: 1px solid hsl(220 27% 12% / 0.2);
+  }
+
+  .glass-border {
+    background: var(--gradient-border);
+    padding: 1px;
+    border-radius: inherit;
+  }
+
+  .bg-gradient-primary {
+    background: var(--gradient-primary);
+  }
+  .bg-gradient-glass {
+    background: var(--gradient-glass);
+  }
+
+  .shadow-glow-primary {
+    box-shadow: var(--glow-primary);
+  }
+  .shadow-glow-secondary {
+    box-shadow: var(--glow-secondary);
+  }
+  .shadow-glow-subtle {
+    box-shadow: var(--glow-subtle);
+  }
+  .shadow-glass {
+    box-shadow:
+      0 8px 32px hsl(220 27% 4% / 0.45),
+      0 0 0 1px hsl(220 27% 12% / 0.2),
+      inset 0 1px 0 hsl(210 40% 98% / 0.06);
+  }
+
+  .transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .transition-bounce {
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+}
+
+/* ===== ANIMATIONS (v4: define keyframes, then make utilities) ===== */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes slide-in-right {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: var(--glow-primary);
+  }
+  50% {
+    box-shadow: var(--glow-secondary);
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@layer utilities {
+  .animate-accordion-down {
+    animation: accordion-down 0.2s ease-out;
+  }
+  .animate-accordion-up {
+    animation: accordion-up 0.2s ease-out;
+  }
+  .animate-fade-in {
+    animation: fade-in 0.6s ease-out;
+  }
+  .animate-slide-in-right {
+    animation: slide-in-right 0.6s ease-out;
+  }
+  .animate-glow-pulse {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+}
+
+/* ===== OPTIONAL: container look-alike (if you relied on theme.container) ===== */
+@layer utilities {
+  .app-container {
+    margin-inline: auto;
+    padding-inline: 2rem;
+    max-width: 1400px;
+  }
+  @media (min-width: 1536px) {
+    .app-container {
+      max-width: 1400px;
+    }
+  } /* matches 2xl: 1400px */
 }
