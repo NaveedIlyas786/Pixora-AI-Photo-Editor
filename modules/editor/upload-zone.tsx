@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Crown, ImageIcon, Loader2, Upload, X } from "lucide-react";
+import { signIn, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   ImageKitInvalidRequestError,
@@ -15,6 +16,8 @@ interface UploadZoneProps {
 }
 
 const UploadZone = ({ onImageUpload }: UploadZoneProps) => {
+  const { status } = useSession();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -28,6 +31,10 @@ const UploadZone = ({ onImageUpload }: UploadZoneProps) => {
 
   const checkUsage = useCallback(async () => {
     const response = await fetch("/api/usage");
+    if (response.status === 401) {
+      await signIn("google");
+      throw new Error("Unauthorized");
+    }
     if (!response.ok) {
       throw new Error("Failed to check usage");
     }
@@ -124,22 +131,25 @@ const UploadZone = ({ onImageUpload }: UploadZoneProps) => {
   );
 
   useEffect(() => {
+    if (status !== "authenticated") return;
+
     let active = true;
 
     fetch("/api/usage")
       .then((response) => {
+        if (response.status === 401) return null;
         if (!response.ok) throw new Error("Failed to check usage");
         return response.json();
       })
       .then((data) => {
-        if (active) setUsageData(data);
+        if (active && data) setUsageData(data);
       })
       .catch(console.error);
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [status]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -221,6 +231,7 @@ const UploadZone = ({ onImageUpload }: UploadZoneProps) => {
           }`}
         >
           <input
+            ref={fileInputRef}
             type="file"
             accept="image/*"
             onChange={handleFileSelect}
@@ -262,9 +273,15 @@ const UploadZone = ({ onImageUpload }: UploadZoneProps) => {
             </p>
 
             <Button
+              type="button"
               variant="outline"
               className="glass border-card-border"
               disabled={isUploading}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
             >
               {isUploading ? (
                 <>
@@ -286,7 +303,7 @@ const UploadZone = ({ onImageUpload }: UploadZoneProps) => {
         <div className="mt-4 text-center">
           <div className="flex items-center justify-center space-x-2 text-xs text-muted-foreground">
             <span>
-              Usage: {usageData.usageCount}/{usageData.usageLimit}
+              Usage: {usageData.usageLimit===999999 ? <span className="text-primary font-bold">Unlimited</span>  : `${usageData.usageCount}/${usageData.usageLimit}`}
             </span>
             {usageData.plan === "Free" && (
               <Crown className="h-3 w-3 text-primary" />

@@ -85,10 +85,32 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.email = user.email;
         token.avatar = user.image;
-        token.plan = "Free";
-        token.usageCount = 0;
-        token.usageLimit = 3;
       }
+
+      // Always sync plan/usage from DB so Paid upgrades show in session
+      if (token.email) {
+        const dbUser = await prisma.users.findUnique({
+          where: { email: token.email as string },
+          select: {
+            plan: true,
+            usageCount: true,
+            usageLimit: true,
+            avatar: true,
+          },
+        });
+
+        if (dbUser) {
+          token.plan = dbUser.plan;
+          token.usageCount = dbUser.usageCount;
+          token.usageLimit = dbUser.usageLimit;
+          token.avatar = dbUser.avatar ?? token.avatar;
+        } else if (user) {
+          token.plan = "Free";
+          token.usageCount = 0;
+          token.usageLimit = 3;
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {

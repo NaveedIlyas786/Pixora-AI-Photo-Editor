@@ -1,8 +1,8 @@
 "use client";
-import { signIn, useSession } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Menu, Sparkles, X } from "lucide-react";
+import { LogOut, Menu, Sparkles, X } from "lucide-react";
 import { Button } from "../ui/button";
 
 const Navbar = () => {
@@ -32,6 +32,11 @@ const Navbar = () => {
     } else {
       await signIn("google");
     }
+  };
+
+  const handleLogout = async () => {
+    setIsMobileMenuOpen(false);
+    await signOut({ callbackUrl: "/" });
   };
 
   return (
@@ -65,7 +70,7 @@ const Navbar = () => {
           </motion.div>
 
           {/* Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-4">
             <button
               onClick={() => scrollToSection("features")}
               className="text-foreground hover:text-primary transition-colors font-medium"
@@ -80,11 +85,21 @@ const Navbar = () => {
             </button>
             <Button
               variant="hero"
-              className="w-full font-semibold"
+              className="font-semibold"
               onClick={handleSubmit}
             >
               {session?.user ? "Launch App" : "Sign In"}
             </Button>
+            {session?.user && (
+              <Button
+                variant="outline"
+                className="font-semibold border-card-border"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -124,6 +139,16 @@ const Navbar = () => {
             <Button variant="hero" className="w-full" onClick={handleSubmit}>
               {session?.user ? "Launch App" : "Sign In"}
             </Button>
+            {session?.user && (
+              <Button
+                variant="outline"
+                className="w-full border-card-border"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            )}
           </div>
         </motion.div>
       </div>

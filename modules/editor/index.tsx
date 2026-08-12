@@ -27,7 +27,16 @@ interface ProcessingJob {
   result?: string;
 }
 
-const primaryTools = [
+interface EditorTool {
+  id: string;
+  name: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  description: string;
+  hasPrompt?: boolean;
+}
+
+const primaryTools: EditorTool[] = [
   {
     id: "e-bgremove",
     name: "Remove Background",
@@ -68,7 +77,7 @@ const primaryTools = [
   },
 ];
 
-const secondaryTools = [
+const secondaryTools: EditorTool[] = [
   {
     id: "e-dropshadow",
     name: "AI Drop Shadow",
@@ -96,7 +105,6 @@ const secondaryTools = [
     icon: Type,
     color: "primary",
     description: "Create image variations",
-    hasPrompt: true,
   },
   {
     id: "e-crop-face",
@@ -116,55 +124,91 @@ const secondaryTools = [
 
 const allTools = [...primaryTools, ...secondaryTools];
 
+// Background AI tools conflict — only one should be active at a time
+const BACKGROUND_TOOLS = new Set([
+  "e-bgremove",
+  "e-removedotbg",
+  "e-changebg",
+]);
+
 const Editor = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [currentJob, setCurrentJob] = useState<ProcessingJob | null>(null);
   const [editHistory, setEditHistory] = useState<ProcessingJob[]>([]);
   const [activeEffects, setActiveEffects] = useState<Set<string>>(new Set());
+  const [effectPrompts, setEffectPrompts] = useState<Record<string, string>>(
+    {}
+  );
   const [promptText, setPromptText] = useState<string>("");
   const [showPromptInput, setShowPromptInput] = useState<boolean>(false);
+  const [pendingToolId, setPendingToolId] = useState<string | null>(null);
 
   const handleImageUpload = (imageUrl: string) => {
     setUploadedImage(imageUrl);
     setProcessedImage(null);
     setCurrentJob(null);
+    setActiveEffects(new Set());
+    setEffectPrompts({});
   };
 
   const handlePromptSubmit = async () => {
-    if (!promptText.trim()) return;
+    if (!promptText.trim() || !pendingToolId) return;
 
-    // Find the tool that was clicked
-    const tool = allTools.find((t) => t.hasPrompt && !activeEffects.has(t.id));
-    if (!tool) return;
-
-    await applyEffect(tool.id, promptText);
+    await applyEffect(pendingToolId, promptText.trim());
     setShowPromptInput(false);
     setPromptText("");
+    setPendingToolId(null);
   };
 
-  const getImageKitTransform = (tooldId: string, prompt?: string): string => {
-    const transforms: Record<string, string> = {
-      "e-bgremove": "e-bgremove",
-      "e-removedotbg": "e-removedotbg",
-      "e-changebg": prompt
-        ? `e-changebg-prompt-${encodeURIComponent(prompt)}`
-        : "e-changebg",
-      "e-edit": prompt ? `e-edit:${encodeURIComponent(prompt)}` : "e-edit",
-      "bg-genfill": prompt
-        ? `bg-genfill:${encodeURIComponent(prompt)}`
-        : "bg-genfill",
-      "e-dropshadow": "e-dropshadow",
-      "e-retouch": "e-retouch",
-      "e-upscale": "e-upscale",
-      "e-genvar": prompt
-        ? `e-genvar:${encodeURIComponent(prompt)}`
-        : "e-genvar",
-      "e-crop-face": "e-crop-face",
-      "e-crop-smart": "e-crop-smart",
-    };
+  const getImageKitTransform = (toolId: string, prompt?: string): string => {
+    switch (toolId) {
+      case "e-bgremove":
+        return "e-bgremove";
+      case "e-removedotbg":
+        return "e-removedotbg";
+      case "e-changebg":
+        return prompt
+          ? `e-changebg-prompt-${encodeURIComponent(prompt)}`
+          : "";
+      case "e-edit":
+        // ImageKit syntax is e-edit-prompt-{text}, not e-edit:{text}
+        return prompt ? `e-edit-prompt-${encodeURIComponent(prompt)}` : "";
+      case "bg-genfill":
+        // Requires resize + pad strategy alongside the fill
+        return prompt
+          ? `w-1000,h-1000,cm-pad_resize,bg-genfill-prompt-${encodeURIComponent(prompt)}`
+          : "w-1000,h-1000,cm-pad_resize,bg-genfill";
+      case "e-dropshadow":
+        return "e-dropshadow";
+      case "e-retouch":
+        return "e-retouch";
+      case "e-upscale":
+        return "e-upscale";
+      case "e-genvar":
+        return "e-genvar";
+      case "e-crop-face":
+        return "fo-face";
+      case "e-crop-smart":
+        return "fo-auto";
+      default:
+        return "";
+    }
+  };
 
-    return transforms[tooldId] || "";
+  const buildTransformUrl = (
+    imageUrl: string,
+    effects: Set<string>,
+    prompts: Record<string, string>
+  ) => {
+    const transforms = Array.from(effects)
+      .map((effect) => getImageKitTransform(effect, prompts[effect]))
+      .filter(Boolean);
+
+    if (transforms.length === 0) return imageUrl;
+
+    // ImageKit requires AI transforms in separate chain steps joined by ":"
+    return `${imageUrl}?tr=${transforms.join(":")}`;
   };
 
   const handleToolClick = async (toolId: string) => {
@@ -174,27 +218,25 @@ const Editor = () => {
 
     if (!tool) return;
 
-    // Toogle effect on/off
-    const newActiveEffects = new Set(activeEffects);
-    if (newActiveEffects.has(toolId)) {
+    // Toggle effect on/off
+    if (activeEffects.has(toolId)) {
+      const newActiveEffects = new Set(activeEffects);
       newActiveEffects.delete(toolId);
       setActiveEffects(newActiveEffects);
 
-      // remove effect from image
-      const remainingEffects = Array.from(newActiveEffects);
+      const newPrompts = { ...effectPrompts };
+      delete newPrompts[toolId];
+      setEffectPrompts(newPrompts);
 
-      const newImageUrl =
-        remainingEffects.length > 0
-          ? `${uploadedImage}?tr=${remainingEffects
-              .map((effect) => getImageKitTransform(effect))
-              .join(",")}`
-          : uploadedImage;
-      setProcessedImage(newImageUrl);
+      setProcessedImage(
+        buildTransformUrl(uploadedImage, newActiveEffects, newPrompts)
+      );
       return;
     }
 
     // Check if tool requires prompt
     if (tool.hasPrompt) {
+      setPendingToolId(toolId);
       setShowPromptInput(true);
       setPromptText("");
       return;
@@ -208,7 +250,7 @@ const Editor = () => {
     if (!uploadedImage) return;
 
     const newJob: ProcessingJob = {
-      id: Date.now().toString(),
+      id: new Date().toString(),
       type: toolId,
       status: "queued",
       progress: 0,
@@ -216,88 +258,150 @@ const Editor = () => {
 
     setCurrentJob(newJob);
 
-    // Apply effect to active effects
+    // Apply effect to active effects (drop conflicting background tools)
     const newActiveEffects = new Set(activeEffects);
+    if (BACKGROUND_TOOLS.has(toolId)) {
+      for (const bgTool of BACKGROUND_TOOLS) {
+        newActiveEffects.delete(bgTool);
+      }
+    }
+    // e-edit rewrites the whole image — don't stack with other AI ops
+    if (toolId === "e-edit") {
+      newActiveEffects.clear();
+    }
     newActiveEffects.add(toolId);
     setActiveEffects(newActiveEffects);
 
-    // Generate the ImageKit transformation URL
-    const allEffects = Array.from(newActiveEffects);
-    const transforms = allEffects.map((effect) =>
-      getImageKitTransform(effect, effect === toolId ? prompt : undefined)
+    const newPrompts = { ...effectPrompts };
+    if (BACKGROUND_TOOLS.has(toolId)) {
+      for (const bgTool of BACKGROUND_TOOLS) {
+        delete newPrompts[bgTool];
+      }
+    }
+    if (toolId === "e-edit") {
+      for (const key of Object.keys(newPrompts)) {
+        delete newPrompts[key];
+      }
+    }
+    if (prompt) {
+      newPrompts[toolId] = prompt;
+    }
+    setEffectPrompts(newPrompts);
+
+    const newImageUrl = buildTransformUrl(
+      uploadedImage,
+      newActiveEffects,
+      newPrompts
     );
-    const newImageUrl = `${uploadedImage}?tr=${transforms.join(",")}`;
+
+    const markFailed = () => {
+      const rolledBackEffects = new Set(newActiveEffects);
+      rolledBackEffects.delete(toolId);
+      setActiveEffects(rolledBackEffects);
+
+      const rolledBackPrompts = { ...newPrompts };
+      delete rolledBackPrompts[toolId];
+      setEffectPrompts(rolledBackPrompts);
+
+      setCurrentJob((prev) => (prev ? { ...prev, status: "error" } : null));
+    };
+
+    const markCompleted = () => {
+      setProcessedImage(newImageUrl);
+      setCurrentJob((prev) =>
+        prev ? { ...prev, progress: 100, status: "completed" } : null
+      );
+      setEditHistory((prev) => [
+        {
+          ...newJob,
+          status: "completed" as JobStatus,
+          progress: 100,
+          result: newImageUrl,
+        },
+        ...prev.slice(0, 2),
+      ]);
+    };
+
+    const probeTransform = async (): Promise<
+      "ready" | "pending" | "failed"
+    > => {
+      // Prefer image decode — works without CORS issues that break HEAD polls
+      const imageStatus = await new Promise<"ready" | "error">((resolve) => {
+        const img = new window.Image();
+        img.onload = () => resolve("ready");
+        img.onerror = () => resolve("error");
+        img.src = `${newImageUrl}${newImageUrl.includes("?") ? "&" : "?"}ik-cache-buster=${Date.now()}`;
+      });
+
+      if (imageStatus === "ready") return "ready";
+
+      // Confirm hard failures (400) vs "still preparing" intermediate responses
+      try {
+        const response = await fetch(newImageUrl, {
+          method: "GET",
+          cache: "no-cache",
+        });
+
+        if (response.status >= 400) return "failed";
+
+        const intermediate =
+          response.headers.get("is-intermediate-response") === "true";
+        const contentType = response.headers.get("content-type") || "";
+
+        if (intermediate || contentType.includes("text/html")) {
+          return "pending";
+        }
+
+        if (contentType.startsWith("image/")) return "ready";
+        return "pending";
+      } catch {
+        // Network/CORS while ImageKit is still preparing
+        return "pending";
+      }
+    };
 
     try {
-      // Start polling the AI transformation URL to check when it's complete
       setCurrentJob((prev) =>
         prev ? { ...prev, status: "processing", progress: 10 } : null
       );
 
       let attempts = 0;
-      const maxAttempts = 60; // 5 minutes max (5s intervals)
-      const pollInterval = 5000; // 5seconds / 5k ms
+      const maxAttempts = 60;
+      const pollInterval = 5000;
 
-      const pollImageKit = async (): Promise<boolean> => {
+      const pollImageKit = async (): Promise<void> => {
         attempts++;
+        const status = await probeTransform();
 
-        try {
-          const response = await fetch(newImageUrl, {
-            method: "HEAD", // only check headers, don't download image
-            cache: "no-cache", // don't use cached version
-          });
-
-          if (response.ok) {
-            // AI transformation is complete
-            setProcessedImage(newImageUrl);
-            setCurrentJob((prev) =>
-              prev ? { ...prev, progress: 100, status: "completed" } : null
-            );
-
-            const completedJob = {
-              ...newJob,
-              status: "completed" as JobStatus,
-              progress: 100,
-              result: newImageUrl,
-            };
-            setEditHistory((prev) => [completedJob, ...prev.slice(0, 2)]);
-            return true;
-          }
-        } catch (error) {
-          console.log(`Poll attempt ${attempts}: AI still processing...`);
+        if (status === "ready") {
+          markCompleted();
+          return;
         }
 
-        // update progress based on attempts
-        const progress = Math.min(10 + attempts * 1.5, 90); // 10% to 90%
-        setCurrentJob((prev) => (prev ? { ...prev, progress } : null));
+        if (status === "failed") {
+          markFailed();
+          return;
+        }
+
+        setCurrentJob((prev) =>
+          prev
+            ? { ...prev, progress: Math.min(10 + attempts * 1.5, 90) }
+            : null
+        );
 
         if (attempts >= maxAttempts) {
-          // Timeout - mark as completed anyway
-          setProcessedImage(newImageUrl);
-          setCurrentJob((prev) =>
-            prev ? { ...prev, progress: 100, status: "completed" } : null
-          );
-
-          const completedJob = {
-            ...newJob,
-            status: "completed" as JobStatus,
-            progress: 100,
-            result: newImageUrl,
-          };
-          setEditHistory((prev) => [completedJob, ...prev.slice(0, 2)]);
-          return true;
+          markFailed();
+          return;
         }
 
-        // Continue polling
         await new Promise((resolve) => setTimeout(resolve, pollInterval));
         return pollImageKit();
       };
 
-      // starting polling
       await pollImageKit();
     } catch (error) {
       console.error("Error applying effect:", error);
-      setCurrentJob((prev) => (prev ? { ...prev, status: "error" } : null));
+      markFailed();
     }
   };
 
@@ -373,7 +477,11 @@ const Editor = () => {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => setShowPromptInput(false)}
+                      onClick={() => {
+                        setShowPromptInput(false);
+                        setPendingToolId(null);
+                        setPromptText("");
+                      }}
                     >
                       Cancel
                     </Button>
@@ -444,6 +552,7 @@ const Editor = () => {
               originalImage={uploadedImage}
               processedImage={processedImage}
               isProcessing={currentJob?.status === "processing"}
+              hasError={currentJob?.status === "error"}
             />
 
             {/* Secondery Tools */}
@@ -461,9 +570,6 @@ const Editor = () => {
                   const isProcessing =
                     currentJob?.type === tool.id &&
                     currentJob.status === "processing";
-                  const isQueued =
-                    currentJob?.type === tool.id &&
-                    currentJob.status === "queued";
                   const isDisabled =
                     !uploadedImage || currentJob?.status === "processing";
 
@@ -557,7 +663,7 @@ const Editor = () => {
                               : `${currentJob.progress}%`,
                         }}
                       />
-                      <div className="text-xs text-muted-foreground mt-1 text-center">
+                      <div className="text-xs text-muted-foreground my-1 text-center">
                         {currentJob.status === "queued" && "Initializing..."}
                         {currentJob.status === "processing" &&
                           "Waiting for AI to complete transformation..."}
@@ -574,7 +680,7 @@ const Editor = () => {
               {/* Edit History */}
               {editHistory?.length > 0 && (
                 <div className="mt-8">
-                  <h4 className="text-sm font-semibold text-foreground mb-3">
+                  <h4 className="text-sm font-semibold text-foreground mb-3 mt-1">
                     Recent Edits
                   </h4>
                   <div className="space-y-2">

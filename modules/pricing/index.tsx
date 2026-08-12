@@ -2,11 +2,13 @@
 import { Check, Crown, Star, Zap } from "lucide-react";
 import React from "react";
 import { motion } from "framer-motion";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 const plans = [
   {
     name: "Free",
+    dbPlan: "Free" as const,
     price: "$0",
     period: "forever",
     description: "Perfect for trying out Pixora AI",
@@ -23,6 +25,7 @@ const plans = [
   },
   {
     name: "Pro",
+    dbPlan: "Paid" as const,
     price: "$19",
     period: "per month",
     description: "Unlimited power for professionals",
@@ -42,6 +45,9 @@ const plans = [
 ];
 
 const Pricing = () => {
+  const { data: session } = useSession();
+  const currentPlan = session?.user?.plan ?? null;
+
   const scrollToEditor = () => {
     const element = document.getElementById("editor");
     if (element) {
@@ -81,88 +87,109 @@ const Pricing = () => {
         </motion.div>
 
         <div className="grid lg:grid-cols-2 gap-8 max-w-4xl mx-auto">
-          {plans?.map((plan, index) => (
-            <motion.div
-              key={plan.name}
-              initial={{ opacity: 0, y: 50 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: index * 0.2 }}
-              whileHover={{ scale: 1.02, y: -5 }}
-              className={`relative group ${plan.popular ? "lg:-mt-8" : ""}`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
-                  <div className="bg-gradient-primary px-6 py-2 rounded-full text-sm font-bold text-background">
-                    Most Popular
-                  </div>
-                </div>
-              )}
+          {plans?.map((plan, index) => {
+            const isCurrentPlan = currentPlan === plan.dbPlan;
 
-              <div
-                className={`h-full glass rounded-2xl p-8 border transition-all duration-300 ${
-                  plan.popular
-                    ? "border-primary/50 shadow-glow-primary"
-                    : "border-card-border hover:border-primary/30 shadow-glow-subtle hover:shadow-glow-primary"
-                }`}
+            return (
+              <motion.div
+                key={plan.name}
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: index * 0.2 }}
+                whileHover={{ scale: 1.02, y: -5 }}
+                className={`relative group ${plan.popular ? "lg:-mt-8" : ""}`}
               >
-                <div className="text-center mb-8">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 bg-gradient-to-br from-primary to-secondary group-hover:animate-glow-pulse">
-                    <plan.icon className="w-8 h-8 text-background" />
-                  </div>
-
-                  <h3 className="text-2xl font-bold mb-2 text-foreground">
-                    {plan.name}
-                  </h3>
-                  <p className="text-muted-foreground mb-4">
-                    {plan.description}
-                  </p>
-
-                  <div className="mb-6">
-                    <span className="text-5xl font-bold text-foreground">
-                      {plan.price}
-                    </span>
-                    <span className="text-muted-foreground ml-2">
-                      /{plan.period}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-4 mb-8">
-                  {plan?.features?.map((feature,index) => (
-                    <div key={index} className={"flex items-center space-x-3"}>
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
-                        <Check className="w-3 h-3 text-primary" />
-                      </div>
-                      <span className="text-foreground">{feature}</span>
-                    </div>
-                  ))}
-{/* <hr className="my-4 border-card-border"/> */}
-                  {plan?.limitations?.map((limitation) => (
+                {(isCurrentPlan || plan.popular) && (
+                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
                     <div
-                      key={limitation}
-                      className="flex items-center space-x-3"
+                      className={`px-6 py-2 rounded-full text-sm font-bold ${
+                        isCurrentPlan
+                          ? "bg-foreground text-background"
+                          : "bg-gradient-primary text-background"
+                      }`}
                     >
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center">
-                        <div className="w-3 h-0.5 bg-muted-foreground" />
-                      </div>
-                      <span className="text-muted-foreground">
-                        {limitation}
+                      {isCurrentPlan ? "Current plan" : "Most Popular"}
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  className={`h-full glass rounded-2xl p-8 border transition-all duration-300 ${
+                    isCurrentPlan
+                      ? "border-primary shadow-glow-primary"
+                      : plan.popular
+                        ? "border-primary/50 shadow-glow-primary"
+                        : "border-card-border hover:border-primary/30 shadow-glow-subtle hover:shadow-glow-primary"
+                  }`}
+                >
+                  <div className="text-center mb-8">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 bg-gradient-to-br from-primary to-secondary group-hover:animate-glow-pulse">
+                      <plan.icon className="w-8 h-8 text-background" />
+                    </div>
+
+                    <h3 className="text-2xl font-bold mb-2 text-foreground">
+                      {plan.name}
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      {plan.description}
+                    </p>
+
+                    <div className="mb-6">
+                      <span className="text-5xl font-bold text-foreground">
+                        {plan.price}
+                      </span>
+                      <span className="text-muted-foreground ml-2">
+                        /{plan.period}
                       </span>
                     </div>
-                  ))}
-                </div>
+                  </div>
 
-                <Button
-                  variant={plan.popular ? "hero" : "secondary"}
-                  className="w-full font-semibold"
-                  onClick={scrollToEditor}
-                >
-                  {plan.cta}
-                </Button>
-              </div>
-            </motion.div>
-          ))}
+                  <div className="space-y-4 mb-8">
+                    {plan?.features?.map((feature, featureIndex) => (
+                      <div
+                        key={featureIndex}
+                        className={"flex items-center space-x-3"}
+                      >
+                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary" />
+                        </div>
+                        <span className="text-foreground">{feature}</span>
+                      </div>
+                    ))}
+                    {plan?.limitations?.map((limitation) => (
+                      <div
+                        key={limitation}
+                        className="flex items-center space-x-3"
+                      >
+                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center">
+                          <div className="w-3 h-0.5 bg-muted-foreground" />
+                        </div>
+                        <span className="text-muted-foreground">
+                          {limitation}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    variant={
+                      isCurrentPlan
+                        ? "outline"
+                        : plan.popular
+                          ? "hero"
+                          : "secondary"
+                    }
+                    className="w-full font-semibold"
+                    onClick={scrollToEditor}
+                    disabled={isCurrentPlan}
+                  >
+                    {isCurrentPlan ? "Current plan" : plan.cta}
+                  </Button>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
 
         <motion.div

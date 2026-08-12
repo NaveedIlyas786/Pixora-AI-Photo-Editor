@@ -7,12 +7,14 @@ interface CanvasEditorProps {
   originalImage: string | null;
   processedImage: string | null;
   isProcessing: boolean;
+  hasError?: boolean;
 }
 
 const CanvasEditor = ({
   originalImage,
   processedImage,
   isProcessing,
+  hasError = false,
 }: CanvasEditorProps) => {
   const [showComparison, setShowComparison] = useState(false);
   const [sliderPosition, setSliderPosition] = useState(50);
@@ -153,6 +155,10 @@ const CanvasEditor = ({
       <div className="text-center">
         {isProcessing ? (
           <p className="text-sm text-primary">Processing with AI...</p>
+        ) : hasError ? (
+          <p className="text-sm text-destructive">
+            Transformation failed. Try another tool or a simpler prompt.
+          </p>
         ) : processedImage ? (
           <p className="text-sm text-primary">
             ✨ Magic applied! Compare or export your result

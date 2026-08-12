@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import prisma from "@/lib/prisma";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-08-27.basil",
+  apiVersion: "2026-07-29.dahlia",
 });
 
 export async function POST(request: NextRequest) {
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create user
-    let user = await prisma.users.findUnique({
+    const user = await prisma.users.findUnique({
       where: { email: token.email as string },
     });
 
