@@ -3,6 +3,7 @@
 import { SessionProvider, useSession } from "next-auth/react";
 import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { Toaster } from "@/components/ui/sonner";
 
 function SessionSync() {
   const { update } = useSession();
@@ -24,6 +25,7 @@ export default function Provider({ children }: { children: React.ReactNode }) {
         <SessionSync />
       </Suspense>
       {children}
+      <Toaster />
     </SessionProvider>
   );
 }

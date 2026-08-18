@@ -8,6 +8,7 @@ interface CanvasEditorProps {
   processedImage: string | null;
   isProcessing: boolean;
   hasError?: boolean;
+  errorMessage?: string;
 }
 
 const CanvasEditor = ({
@@ -15,6 +16,7 @@ const CanvasEditor = ({
   processedImage,
   isProcessing,
   hasError = false,
+  errorMessage,
 }: CanvasEditorProps) => {
   const [showComparison, setShowComparison] = useState(false);
   const [sliderPosition, setSliderPosition] = useState(50);
@@ -157,7 +159,8 @@ const CanvasEditor = ({
           <p className="text-sm text-primary">Processing with AI...</p>
         ) : hasError ? (
           <p className="text-sm text-destructive">
-            Transformation failed. Try another tool or a simpler prompt.
+            {errorMessage ||
+              "Transformation failed. Try another tool or a simpler prompt."}
           </p>
         ) : processedImage ? (
           <p className="text-sm text-primary">

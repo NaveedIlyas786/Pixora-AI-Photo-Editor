@@ -1,5 +1,6 @@
 "use client";
 import {
+  AlertCircle,
   CheckCircle,
   Clock,
   Crop,
@@ -16,6 +17,8 @@ import UploadZone from "./upload-zone";
 import { Button } from "@/components/ui/button";
 import CanvasEditor from "./canvas-editor";
 import { saveAs } from "file-saver";
+import { toast } from "sonner";
+import { getFriendlyImageKitError } from "@/lib/imagekit-errors";
 
 type JobStatus = "idle" | "queued" | "processing" | "completed" | "error";
 
@@ -25,6 +28,7 @@ interface ProcessingJob {
   status: JobStatus;
   progress: number;
   result?: string;
+  errorMessage?: string;
 }
 
 interface EditorTool {
@@ -294,7 +298,10 @@ const Editor = () => {
       newPrompts
     );
 
-    const markFailed = () => {
+    const toolName =
+      allTools.find((t) => t.id === toolId)?.name || "AI transformation";
+
+    const markFailed = (errorMessage: string) => {
       const rolledBackEffects = new Set(newActiveEffects);
       rolledBackEffects.delete(toolId);
       setActiveEffects(rolledBackEffects);
@@ -303,13 +310,23 @@ const Editor = () => {
       delete rolledBackPrompts[toolId];
       setEffectPrompts(rolledBackPrompts);
 
-      setCurrentJob((prev) => (prev ? { ...prev, status: "error" } : null));
+      setCurrentJob((prev) =>
+        prev ? { ...prev, status: "error", errorMessage } : null
+      );
+      toast.error(errorMessage, { duration: 8000 });
     };
 
     const markCompleted = () => {
       setProcessedImage(newImageUrl);
       setCurrentJob((prev) =>
-        prev ? { ...prev, progress: 100, status: "completed" } : null
+        prev
+          ? {
+              ...prev,
+              progress: 100,
+              status: "completed",
+              errorMessage: undefined,
+            }
+          : null
       );
       setEditHistory((prev) => [
         {
@@ -320,43 +337,52 @@ const Editor = () => {
         },
         ...prev.slice(0, 2),
       ]);
+      toast.success(`${toolName} applied successfully`);
     };
 
-    const probeTransform = async (): Promise<
-      "ready" | "pending" | "failed"
-    > => {
+    type ProbeResult =
+      | { status: "ready" }
+      | { status: "pending" }
+      | { status: "failed"; message: string };
+
+    const probeTransform = async (): Promise<ProbeResult> => {
+      const cacheBustedUrl = `${newImageUrl}${newImageUrl.includes("?") ? "&" : "?"}ik-cache-buster=${Date.now()}`;
+
       // Prefer image decode — works without CORS issues that break HEAD polls
       const imageStatus = await new Promise<"ready" | "error">((resolve) => {
         const img = new window.Image();
         img.onload = () => resolve("ready");
         img.onerror = () => resolve("error");
-        img.src = `${newImageUrl}${newImageUrl.includes("?") ? "&" : "?"}ik-cache-buster=${Date.now()}`;
+        img.src = cacheBustedUrl;
       });
 
-      if (imageStatus === "ready") return "ready";
+      if (imageStatus === "ready") return { status: "ready" };
 
-      // Confirm hard failures (400) vs "still preparing" intermediate responses
+      // Confirm hard failures vs "still preparing" intermediate responses
       try {
-        const response = await fetch(newImageUrl, {
-          method: "GET",
-          cache: "no-cache",
+        const response = await fetch("/api/imagekit-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: cacheBustedUrl }),
         });
+        const data = (await response.json()) as {
+          status?: "ready" | "pending" | "failed";
+          message?: string;
+        };
 
-        if (response.status >= 400) return "failed";
-
-        const intermediate =
-          response.headers.get("is-intermediate-response") === "true";
-        const contentType = response.headers.get("content-type") || "";
-
-        if (intermediate || contentType.includes("text/html")) {
-          return "pending";
+        if (data.status === "failed") {
+          return {
+            status: "failed",
+            message:
+              data.message || getFriendlyImageKitError(undefined, 500),
+          };
         }
 
-        if (contentType.startsWith("image/")) return "ready";
-        return "pending";
+        if (data.status === "ready") return { status: "ready" };
+        return { status: "pending" };
       } catch {
-        // Network/CORS while ImageKit is still preparing
-        return "pending";
+        // Network while ImageKit is still preparing
+        return { status: "pending" };
       }
     };
 
@@ -373,13 +399,13 @@ const Editor = () => {
         attempts++;
         const status = await probeTransform();
 
-        if (status === "ready") {
+        if (status.status === "ready") {
           markCompleted();
           return;
         }
 
-        if (status === "failed") {
-          markFailed();
+        if (status.status === "failed") {
+          markFailed(status.message);
           return;
         }
 
@@ -390,7 +416,9 @@ const Editor = () => {
         );
 
         if (attempts >= maxAttempts) {
-          markFailed();
+          markFailed(
+            "This is taking longer than expected. Please try again."
+          );
           return;
         }
 
@@ -401,7 +429,7 @@ const Editor = () => {
       await pollImageKit();
     } catch (error) {
       console.error("Error applying effect:", error);
-      markFailed();
+      markFailed("Processing failed. Please try again.");
     }
   };
 
@@ -553,6 +581,7 @@ const Editor = () => {
               processedImage={processedImage}
               isProcessing={currentJob?.status === "processing"}
               hasError={currentJob?.status === "error"}
+              errorMessage={currentJob?.errorMessage}
             />
 
             {/* Secondery Tools */}
@@ -627,6 +656,8 @@ const Editor = () => {
                       <CheckCircle className="h-5 w-5 text-primary" />
                     ) : currentJob.status === "queued" ? (
                       <Clock className="h-5 w-5 text-muted-foreground animate-pulse" />
+                    ) : currentJob.status === "error" ? (
+                      <AlertCircle className="h-5 w-5 text-destructive" />
                     ) : (
                       <Clock className="h-5 w-5 text-muted-foreground" />
                     )}
@@ -635,14 +666,21 @@ const Editor = () => {
                         {allTools.find((t) => t.id === currentJob.type)?.name ||
                           currentJob.type.replace("-", " ")}
                       </p>
-                      <p className="text-sm text-muted-foreground capitalize">
+                      <p
+                        className={`text-sm ${
+                          currentJob.status === "error"
+                            ? "text-destructive"
+                            : "text-muted-foreground capitalize"
+                        }`}
+                      >
                         {currentJob.status === "queued" &&
                           "Preparing AI transformation..."}
                         {currentJob.status === "processing" &&
                           `Processing with AI... (${currentJob.progress}%)`}
                         {currentJob.status === "completed" &&
                           "AI transformation completed!"}
-                        {currentJob.status === "error" && "Processing failed"}
+                        {currentJob.status === "error" &&
+                          (currentJob.errorMessage || "Processing failed")}
                       </p>
                     </div>
                   </div>
